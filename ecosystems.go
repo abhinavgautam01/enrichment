@@ -16,11 +16,22 @@ type EcosystemsClient struct {
 
 // NewEcosystemsClient creates a client that uses the ecosyste.ms API.
 func NewEcosystemsClient() (*EcosystemsClient, error) {
-	return newEcosystemsClient(defaultUserAgent)
+	return newEcosystemsClient(options{userAgent: defaultUserAgent})
 }
 
-func newEcosystemsClient(userAgent string) (*EcosystemsClient, error) {
-	client, err := ecosystems.NewClient(userAgent)
+func newEcosystemsClient(o options) (*EcosystemsClient, error) {
+	clientOpts := []ecosystems.Option{}
+	if o.from != "" {
+		clientOpts = append(clientOpts, ecosystems.WithFrom(o.from))
+	}
+	if o.apiKey != "" {
+		clientOpts = append(clientOpts, ecosystems.WithAPIKey(o.apiKey))
+	}
+	if o.batchSize > 0 {
+		clientOpts = append(clientOpts, ecosystems.WithBatchSize(o.batchSize))
+	}
+
+	client, err := ecosystems.NewClient(o.userAgent, clientOpts...)
 	if err != nil {
 		return nil, err
 	}

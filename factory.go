@@ -13,12 +13,42 @@ type Option func(*options)
 
 type options struct {
 	userAgent string
+	from      string
+	apiKey    string
+	batchSize int
 }
 
 // WithUserAgent sets the User-Agent header for API requests.
 func WithUserAgent(ua string) Option {
 	return func(o *options) {
 		o.userAgent = ua
+	}
+}
+
+// WithFrom sets the From header (email address) for ecosyste.ms API
+// requests. Identifying the client moves it out of the shared
+// rate-limit pool, which reduces stream-level rejections.
+// Ignored by the direct registries client.
+func WithFrom(email string) Option {
+	return func(o *options) {
+		o.from = email
+	}
+}
+
+// WithAPIKey sets the bearer token sent on ecosyste.ms API requests.
+// Ignored by the direct registries client.
+func WithAPIKey(key string) Option {
+	return func(o *options) {
+		o.apiKey = key
+	}
+}
+
+// WithBatchSize sets the per-request batch size for ecosyste.ms bulk
+// lookups. Values <= 0 or above the upstream maximum fall back to the
+// upstream default. Ignored by the direct registries client.
+func WithBatchSize(size int) Option {
+	return func(o *options) {
+		o.batchSize = size
 	}
 }
 
@@ -44,7 +74,7 @@ func NewClient(opts ...Option) (Client, error) { //nolint:ireturn // returns dif
 	if directMode() {
 		return newRegistriesClient(o.userAgent), nil
 	}
-	return newHybridClient(o.userAgent)
+	return newHybridClient(o)
 }
 
 // directMode checks if direct registry mode is enabled.

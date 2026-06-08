@@ -479,6 +479,52 @@ func TestNewClientWithUserAgent(t *testing.T) {
 	}
 }
 
+func TestBuildOptions(t *testing.T) {
+	o := buildOptions([]Option{
+		WithUserAgent("ua"),
+		WithFrom("dev@example.com"),
+		WithAPIKey("secret"),
+		WithBatchSize(25),
+	})
+	if o.userAgent != "ua" {
+		t.Errorf("userAgent = %q, want %q", o.userAgent, "ua")
+	}
+	if o.from != "dev@example.com" {
+		t.Errorf("from = %q, want %q", o.from, "dev@example.com")
+	}
+	if o.apiKey != "secret" {
+		t.Errorf("apiKey = %q, want %q", o.apiKey, "secret")
+	}
+	if o.batchSize != 25 {
+		t.Errorf("batchSize = %d, want %d", o.batchSize, 25)
+	}
+}
+
+func TestBuildOptionsDefaults(t *testing.T) {
+	o := buildOptions(nil)
+	if o.userAgent != defaultUserAgent {
+		t.Errorf("userAgent = %q, want %q", o.userAgent, defaultUserAgent)
+	}
+	if o.from != "" || o.apiKey != "" || o.batchSize != 0 {
+		t.Errorf("expected zero values for from/apiKey/batchSize, got %+v", o)
+	}
+}
+
+func TestNewEcosystemsClientWithAllOptions(t *testing.T) {
+	c, err := newEcosystemsClient(options{
+		userAgent: "git-pkgs/test",
+		from:      "dev@example.com",
+		apiKey:    "secret",
+		batchSize: 25,
+	})
+	if err != nil {
+		t.Fatalf("newEcosystemsClient: %v", err)
+	}
+	if c == nil || c.client == nil {
+		t.Fatal("expected non-nil client")
+	}
+}
+
 func TestDepsDevBulkLookup(t *testing.T) {
 	callCount := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
