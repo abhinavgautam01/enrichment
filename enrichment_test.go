@@ -228,10 +228,14 @@ func TestEcosystemsClientGetDependentsByRepositoryURL(t *testing.T) {
 		switch r.URL.Path {
 		case "/packages/lookup":
 			if got := r.URL.Query().Get("repository_url"); got != "https://github.com/acme/widget" {
-				t.Fatalf("repository_url = %q", got)
+				t.Errorf("repository_url = %q", got)
+				http.Error(w, "bad repository_url", http.StatusInternalServerError)
+				return
 			}
 			if got := r.URL.Query().Get("per_page"); got != "" {
-				t.Fatalf("per_page = %q, want empty for first lookup page", got)
+				t.Errorf("per_page = %q, want empty for first lookup page", got)
+				http.Error(w, "bad per_page", http.StatusInternalServerError)
+				return
 			}
 			_, _ = w.Write([]byte(`[
 				{"name":"widget-extra","ecosystem":"npm","purl":"pkg:npm/widget-extra","registry":{"name":"npmjs.org"}},
@@ -239,7 +243,9 @@ func TestEcosystemsClientGetDependentsByRepositoryURL(t *testing.T) {
 			]`))
 		case "/registries/npmjs.org/packages/widget/dependent_packages":
 			if got := r.URL.Query().Get("per_page"); got != "2" {
-				t.Fatalf("widget per_page = %q, want 2", got)
+				t.Errorf("widget per_page = %q, want 2", got)
+				http.Error(w, "bad per_page", http.StatusInternalServerError)
+				return
 			}
 			_, _ = w.Write([]byte(`[
 				{
@@ -265,7 +271,8 @@ func TestEcosystemsClientGetDependentsByRepositoryURL(t *testing.T) {
 		case "/registries/npmjs.org/packages/widget-extra/dependent_packages":
 			_, _ = w.Write([]byte(`[]`))
 		default:
-			t.Fatalf("unexpected path %s", r.URL.Path)
+			t.Errorf("unexpected path %s", r.URL.Path)
+			http.NotFound(w, r)
 		}
 	}))
 	defer srv.Close()
