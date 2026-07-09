@@ -39,6 +39,16 @@ reg := enrichment.NewRegistriesClient()      // direct registry queries only
 dep := enrichment.NewDepsDevClient()         // deps.dev API only
 ```
 
+The ecosyste.ms client can also fan out from a source repository URL to the
+packages published from that repository and their dependent packages:
+
+```go
+groups, err := eco.GetDependentsByRepositoryURL(ctx, "https://github.com/rails/rails", 25, 30)
+for _, group := range groups {
+    fmt.Printf("%s has %d dependent packages\n", group.PackageName, len(group.Dependents))
+}
+```
+
 ## Vulnerabilities, Licenses, and Versions
 
 ```go

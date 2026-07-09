@@ -49,6 +49,27 @@ type PackageInfo struct {
 	Maintainers  []Maintainer
 }
 
+// RepositoryDependents groups dependent packages by one package published from
+// a source repository.
+type RepositoryDependents struct {
+	PackageName string
+	Ecosystem   string
+	PURL        string
+	Dependents  []DependentPackage
+}
+
+// DependentPackage contains metadata for one package that depends on another.
+type DependentPackage struct {
+	Ecosystem           string
+	Name                string
+	PURL                string
+	Repository          string
+	RegistryURL         string
+	LatestVersion       string
+	Downloads           int
+	DependentReposCount int
+}
+
 // Maintainer is a person or account that maintains a package on its registry.
 type Maintainer struct {
 	Login string

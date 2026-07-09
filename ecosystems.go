@@ -2,6 +2,8 @@ package enrichment
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"time"
 
 	"github.com/ecosyste-ms/ecosystems-go"
@@ -166,6 +168,84 @@ func (c *EcosystemsClient) GetVersion(ctx context.Context, purlStr string) (*Ver
 		info.Integrity = *v.Integrity
 	}
 	return info, nil
+}
+
+// GetDependentsByRepositoryURL finds packages published from repositoryURL and
+// fetches dependent packages for each of them.
+func (c *EcosystemsClient) GetDependentsByRepositoryURL(ctx context.Context, repositoryURL string, maxPackages, maxDependentsPerPackage int) ([]RepositoryDependents, error) {
+	pkgs, err := c.client.LookupPackagesByRepositoryURL(ctx, repositoryURL, maxPackages)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(pkgs, func(i, j int) bool {
+		if pkgs[i].Name == pkgs[j].Name {
+			return pkgs[i].Ecosystem < pkgs[j].Ecosystem
+		}
+		return pkgs[i].Name < pkgs[j].Name
+	})
+
+	result := make([]RepositoryDependents, 0, len(pkgs))
+	for _, pkg := range pkgs {
+		if pkg.Registry.Name == "" {
+			return nil, fmt.Errorf("package %s has no registry name", pkg.Name)
+		}
+		dependents, err := c.client.GetDependentPackages(ctx, pkg.Registry.Name, pkg.Name, maxDependentsPerPackage)
+		if err != nil {
+			return nil, fmt.Errorf("get dependents for %s/%s: %w", pkg.Registry.Name, pkg.Name, err)
+		}
+		out := make([]DependentPackage, 0, len(dependents))
+		for _, dep := range dependents {
+			out = append(out, convertDependentPackage(dep))
+		}
+		sort.Slice(out, func(i, j int) bool {
+			if out[i].Name == out[j].Name {
+				return out[i].PURL < out[j].PURL
+			}
+			return out[i].Name < out[j].Name
+		})
+		result = append(result, RepositoryDependents{
+			PackageName: pkg.Name,
+			Ecosystem:   pkg.Ecosystem,
+			PURL:        pkg.Purl,
+			Dependents:  out,
+		})
+	}
+	return result, nil
+}
+
+func convertDependentPackage(pkg packages.Package) DependentPackage {
+	out := DependentPackage{
+		Ecosystem:           pkg.Ecosystem,
+		Name:                pkg.Name,
+		PURL:                pkg.Purl,
+		Downloads:           pkg.Downloads,
+		DependentReposCount: pkg.DependentReposCount,
+	}
+	if pkg.RepositoryUrl != nil {
+		out.Repository = *pkg.RepositoryUrl
+	}
+	if out.Repository == "" {
+		out.Repository = extractRepoHTMLURL(pkg.RepoMetadata)
+	}
+	if pkg.RegistryUrl != nil {
+		out.RegistryURL = *pkg.RegistryUrl
+	} else {
+		out.RegistryURL = registries.DefaultURL(pkg.Ecosystem)
+	}
+	if pkg.LatestReleaseNumber != nil {
+		out.LatestVersion = *pkg.LatestReleaseNumber
+	}
+	return out
+}
+
+func extractRepoHTMLURL(repoMetadata *map[string]interface{}) string {
+	if repoMetadata == nil {
+		return ""
+	}
+	if htmlURL, ok := (*repoMetadata)["html_url"].(string); ok {
+		return htmlURL
+	}
+	return ""
 }
 
 func convertMaintainers(maintainers []packages.Maintainer) []Maintainer {
