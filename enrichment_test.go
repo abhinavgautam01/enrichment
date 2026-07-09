@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ecosyste-ms/ecosystems-go"
 	"github.com/ecosyste-ms/ecosystems-go/packages"
 )
 
@@ -15,8 +16,8 @@ const testVersionLodash = "4.17.21"
 
 func TestExtractRegistryURL(t *testing.T) {
 	tests := []struct {
-		purl      string
-		ecosystem string
+		purl       string
+		ecosystem  string
 		wantCustom bool
 	}{
 		{"pkg:npm/lodash", "npm", false},
@@ -218,6 +219,107 @@ func TestPackageInfoPopulationFields(t *testing.T) {
 	}
 	if info.Advisories[0].Severity != "critical" {
 		t.Errorf("Advisories[0].Severity = %q, want %q", info.Advisories[0].Severity, "critical")
+	}
+}
+
+func TestEcosystemsClientGetDependentsByRepositoryURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/packages/lookup":
+			if got := r.URL.Query().Get("repository_url"); got != "https://github.com/acme/widget" {
+				t.Fatalf("repository_url = %q", got)
+			}
+			if got := r.URL.Query().Get("per_page"); got != "" {
+				t.Fatalf("per_page = %q, want empty for first lookup page", got)
+			}
+			_, _ = w.Write([]byte(`[
+				{"name":"widget-extra","ecosystem":"npm","purl":"pkg:npm/widget-extra","registry":{"name":"npmjs.org"}},
+				{"name":"widget","ecosystem":"npm","purl":"pkg:npm/widget","registry":{"name":"npmjs.org"}}
+			]`))
+		case "/registries/npmjs.org/packages/widget/dependent_packages":
+			if got := r.URL.Query().Get("per_page"); got != "2" {
+				t.Fatalf("widget per_page = %q, want 2", got)
+			}
+			_, _ = w.Write([]byte(`[
+				{
+					"name":"app-b",
+					"ecosystem":"npm",
+					"purl":"pkg:npm/app-b",
+					"downloads":20,
+					"dependent_repos_count":4,
+					"registry_url":"https://npmjs.org/app-b",
+					"latest_release_number":"2.0.0",
+					"repo_metadata":{"html_url":"https://github.com/acme/app-b"}
+				},
+				{
+					"name":"app-a",
+					"ecosystem":"npm",
+					"purl":"pkg:npm/app-a",
+					"repository_url":"https://github.com/acme/app-a",
+					"downloads":10,
+					"dependent_repos_count":2,
+					"latest_release_number":"1.0.0"
+				}
+			]`))
+		case "/registries/npmjs.org/packages/widget-extra/dependent_packages":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	eco, err := ecosystems.NewClient("test-agent/1.0", ecosystems.WithPackagesServer(srv.URL))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	client := &EcosystemsClient{client: eco}
+
+	got, err := client.GetDependentsByRepositoryURL(context.Background(), "https://github.com/acme/widget", 5, 2)
+	if err != nil {
+		t.Fatalf("GetDependentsByRepositoryURL() error = %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("groups = %+v, want 2", got)
+	}
+	if got[0].PackageName != "widget" || got[1].PackageName != "widget-extra" {
+		t.Fatalf("groups not sorted by package name: %+v", got)
+	}
+	deps := got[0].Dependents
+	if len(deps) != 2 {
+		t.Fatalf("widget dependents = %+v, want 2", deps)
+	}
+	if deps[0].Name != "app-a" ||
+		deps[0].Repository != "https://github.com/acme/app-a" ||
+		deps[0].RegistryURL != "https://registry.npmjs.org" ||
+		deps[0].LatestVersion != "1.0.0" ||
+		deps[0].DependentReposCount != 2 {
+		t.Fatalf("app-a = %+v", deps[0])
+	}
+	if deps[1].Name != "app-b" ||
+		deps[1].Repository != "https://github.com/acme/app-b" ||
+		deps[1].RegistryURL != "https://npmjs.org/app-b" ||
+		deps[1].Downloads != 20 {
+		t.Fatalf("app-b = %+v", deps[1])
+	}
+}
+
+func TestEcosystemsClientGetDependentsByRepositoryURLErrorsWithoutRegistry(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"name":"widget","ecosystem":"npm","purl":"pkg:npm/widget"}]`))
+	}))
+	defer srv.Close()
+
+	eco, err := ecosystems.NewClient("test-agent/1.0", ecosystems.WithPackagesServer(srv.URL))
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	client := &EcosystemsClient{client: eco}
+	_, err = client.GetDependentsByRepositoryURL(context.Background(), "https://github.com/acme/widget", 5, 2)
+	if err == nil {
+		t.Fatal("GetDependentsByRepositoryURL() error = nil, want missing registry error")
 	}
 }
 
