@@ -52,7 +52,9 @@ func (c *RegistriesClient) BulkLookup(ctx context.Context, purls []string) (map[
 			wg.Add(1)
 			go func(purlStr string) {
 				defer wg.Done()
-				sem <- struct{}{}
+				if !acquireSemaphore(ctx, sem) {
+					return
+				}
 				defer func() { <-sem }()
 
 				versions, err := c.GetVersions(ctx, purlStr)
@@ -99,6 +101,15 @@ func (c *RegistriesClient) BulkLookup(ctx context.Context, purls []string) (map[
 		result[purlStr] = info
 	}
 	return result, nil
+}
+
+func acquireSemaphore(ctx context.Context, sem chan<- struct{}) bool {
+	select {
+	case sem <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // findLatestVersion returns the highest version from a list using semver comparison.
