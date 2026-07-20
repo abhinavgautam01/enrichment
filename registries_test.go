@@ -28,3 +28,29 @@ func TestRegistriesClientBlocksLoopbackRepositoryURL(t *testing.T) {
 		t.Fatalf("loopback server received %d requests; safehttp gate did not block dial", n)
 	}
 }
+
+func TestAcquireSemaphore(t *testing.T) {
+	sem := make(chan struct{}, 1)
+
+	if !acquireSemaphore(context.Background(), sem) {
+		t.Fatal("acquireSemaphore() = false, want true")
+	}
+
+	select {
+	case <-sem:
+	default:
+		t.Fatal("semaphore was not acquired")
+	}
+}
+
+func TestAcquireSemaphoreReturnsFalseWhenContextCanceled(t *testing.T) {
+	sem := make(chan struct{}, 1)
+	sem <- struct{}{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if acquireSemaphore(ctx, sem) {
+		t.Fatal("acquireSemaphore() = true, want false")
+	}
+}
