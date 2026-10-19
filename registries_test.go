@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -88,5 +89,108 @@ func TestVersionInfoFromRegistryIncludesStatusAndMetadata(t *testing.T) {
 	yanked := versionInfoFromRegistry(registries.Version{Status: registries.StatusYanked})
 	if yanked.Status != string(registries.StatusYanked) || !yanked.Yanked {
 		t.Fatalf("yanked status metadata = %+v", yanked)
+	}
+}
+
+func TestRegistriesClientBulkLookupCopiesFundingAndMaintainers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/funded":
+			_, _ = w.Write([]byte(`{
+  "_id": "funded",
+  "dist-tags": {"latest": "1.0.0"},
+  "versions": {
+    "1.0.0": {
+      "funding": [
+        "https://github.com/sponsors/funded",
+        {"type": "opencollective", "url": "https://opencollective.com/funded"}
+      ]
+    }
+  },
+  "maintainers": [{"name": "alice", "email": "alice@example.com"}]
+}`))
+		case "/unfunded":
+			_, _ = w.Write([]byte(`{
+  "_id": "unfunded",
+  "dist-tags": {"latest": "2.0.0"},
+  "versions": {"2.0.0": {}}
+}`))
+		case "/api/v1/gems/rails.json":
+			_, _ = w.Write([]byte(`{
+  "name": "rails",
+  "version": "7.1.0",
+  "funding_uri": "https://github.com/sponsors/rails"
+}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	httpClient := registries.NewClient(registryclient.WithHTTPClient(srv.Client()))
+	c := &RegistriesClient{client: httpClient}
+	repo := "?repository_url=" + url.QueryEscape(srv.URL)
+	funded := "pkg:npm/funded" + repo
+	unfunded := "pkg:npm/unfunded" + repo
+	gem := "pkg:gem/rails" + repo
+
+	result, err := c.BulkLookup(context.Background(), []string{funded, unfunded, gem})
+	if err != nil {
+		t.Fatalf("BulkLookup: %v", err)
+	}
+
+	tests := []struct {
+		purl            string
+		wantFunding     []string
+		wantMaintainers []Maintainer
+	}{
+		{
+			purl:            funded,
+			wantFunding:     []string{"https://github.com/sponsors/funded", "https://opencollective.com/funded"},
+			wantMaintainers: []Maintainer{{Login: "alice", Email: "alice@example.com"}},
+		},
+		{purl: unfunded},
+		{purl: gem, wantFunding: []string{"https://github.com/sponsors/rails"}},
+	}
+	for _, tt := range tests {
+		info := result[tt.purl]
+		if info == nil {
+			t.Fatalf("BulkLookup() missing result for %s", tt.purl)
+		}
+		if !reflect.DeepEqual(info.FundingLinks, tt.wantFunding) {
+			t.Errorf("%s FundingLinks = %#v, want %#v", tt.purl, info.FundingLinks, tt.wantFunding)
+		}
+		if !reflect.DeepEqual(info.Maintainers, tt.wantMaintainers) {
+			t.Errorf("%s Maintainers = %#v, want %#v", tt.purl, info.Maintainers, tt.wantMaintainers)
+		}
+	}
+}
+
+func TestMaintainersFromRegistry(t *testing.T) {
+	if got := maintainersFromRegistry(nil); got != nil {
+		t.Errorf("maintainersFromRegistry(nil) = %#v, want nil", got)
+	}
+	if got := maintainersFromRegistry([]registries.Maintainer{}); got != nil {
+		t.Errorf("maintainersFromRegistry(empty) = %#v, want nil", got)
+	}
+
+	got := maintainersFromRegistry([]registries.Maintainer{{
+		UUID:  "123",
+		Login: "alice",
+		Name:  "Alice",
+		Email: "alice@example.com",
+		URL:   "https://example.com/alice",
+		Role:  "owner",
+	}})
+	want := []Maintainer{{
+		Login: "alice",
+		Name:  "Alice",
+		Email: "alice@example.com",
+		URL:   "https://example.com/alice",
+		Role:  "owner",
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("maintainersFromRegistry() = %#v, want %#v", got, want)
 	}
 }

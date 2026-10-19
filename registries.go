@@ -59,6 +59,8 @@ func (c *RegistriesClient) BulkLookup(ctx context.Context, purls []string) (map[
 			Homepage:      pkg.Homepage,
 			Repository:    pkg.Repository,
 			RegistryURL:   extractRegistryURL(purlStr, ecosystem),
+			FundingLinks:  pkg.FundingLinks,
+			Maintainers:   maintainersFromRegistry(pkg.Maintainers),
 			Source:        "registries",
 		}
 
@@ -110,6 +112,25 @@ func (c *RegistriesClient) GetVersion(ctx context.Context, purlStr string) (*Ver
 
 	info := versionInfoFromRegistry(*v)
 	return &info, nil
+}
+
+// maintainersFromRegistry converts maintainers returned by a registry's
+// package endpoint. It returns nil when the registry supplied none.
+func maintainersFromRegistry(maintainers []registries.Maintainer) []Maintainer {
+	if len(maintainers) == 0 {
+		return nil
+	}
+	result := make([]Maintainer, 0, len(maintainers))
+	for _, m := range maintainers {
+		result = append(result, Maintainer{
+			Login: m.Login,
+			Name:  m.Name,
+			Email: m.Email,
+			URL:   m.URL,
+			Role:  m.Role,
+		})
+	}
+	return result
 }
 
 func versionInfoFromRegistry(v registries.Version) VersionInfo {
