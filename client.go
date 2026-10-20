@@ -44,7 +44,8 @@ type PackageInfo struct {
 	// Security advisories (ecosyste.ms only)
 	Advisories []Advisory
 
-	// Funding and maintainers (ecosyste.ms only)
+	// Funding and maintainers (ecosyste.ms, or direct registries that
+	// expose them in package metadata)
 	FundingLinks []string
 	Maintainers  []Maintainer
 }
