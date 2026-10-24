@@ -47,32 +47,68 @@ func (c *RegistriesClient) BulkLookup(ctx context.Context, purls []string) (map[
 		if pkg == nil {
 			continue
 		}
-
-		ecosystem := purlType(purlStr)
-
-		info := &PackageInfo{
-			Ecosystem:     ecosystem,
-			Name:          pkg.Name,
-			LatestVersion: pkg.LatestVersion,
-			License:       pkg.Licenses,
-			Description:   pkg.Description,
-			Homepage:      pkg.Homepage,
-			Repository:    pkg.Repository,
-			RegistryURL:   extractRegistryURL(purlStr, ecosystem),
-			FundingLinks:  pkg.FundingLinks,
-			Maintainers:   maintainersFromRegistry(pkg.Maintainers),
-			Source:        "registries",
-		}
-
+		info := packageInfoFromRegistry(purlStr, pkg)
 		if info.LatestVersion == "" {
 			if latest := latestVersions[purlStr]; latest != nil {
 				info.LatestVersion = latest.Number
 			}
 		}
-
 		result[purlStr] = info
 	}
 	return result, nil
+}
+
+// GetPackage fetches metadata for one package. Unlike BulkLookup, it returns
+// the registry's error: a missing package gives an error matching
+// registries.ErrNotFound, and a registry that can't be queried gives a
+// different one. It returns nil, nil when the registry reports no package
+// without an error.
+//
+// LatestVersion follows the same policy as BulkLookup. If only the version
+// lookup behind it fails, the package is returned without LatestVersion,
+// unless ctx is done, in which case ctx's error is returned.
+func (c *RegistriesClient) GetPackage(ctx context.Context, purlStr string) (*PackageInfo, error) {
+	reg, name, _, err := registries.NewFromPURL(purlStr, c.client)
+	if err != nil {
+		return nil, err
+	}
+	pkg, err := reg.FetchPackage(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	if pkg == nil {
+		return nil, nil
+	}
+	info := packageInfoFromRegistry(purlStr, pkg)
+	if info.LatestVersion == "" {
+		versions, err := reg.FetchVersions(ctx, name)
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		if err == nil {
+			if latest := registries.SelectLatestVersion(versions, reg.Ecosystem(), ""); latest != nil {
+				info.LatestVersion = latest.Number
+			}
+		}
+	}
+	return info, nil
+}
+
+func packageInfoFromRegistry(purlStr string, pkg *registries.Package) *PackageInfo {
+	ecosystem := purlType(purlStr)
+	return &PackageInfo{
+		Ecosystem:     ecosystem,
+		Name:          pkg.Name,
+		LatestVersion: pkg.LatestVersion,
+		License:       pkg.Licenses,
+		Description:   pkg.Description,
+		Homepage:      pkg.Homepage,
+		Repository:    pkg.Repository,
+		RegistryURL:   extractRegistryURL(purlStr, ecosystem),
+		FundingLinks:  pkg.FundingLinks,
+		Maintainers:   maintainersFromRegistry(pkg.Maintainers),
+		Source:        "registries",
+	}
 }
 
 func purlType(purlStr string) string {

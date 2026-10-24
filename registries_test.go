@@ -2,6 +2,7 @@ package enrichment
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -62,6 +63,73 @@ func TestRegistriesClientBulkLookupUsesSharedLatestPolicy(t *testing.T) {
 	}
 	if result[purl] == nil || result[purl].LatestVersion != "1.0.0" {
 		t.Fatalf("BulkLookup() = %+v, want latest version 1.0.0", result[purl])
+	}
+}
+
+func TestRegistriesClientGetPackage(t *testing.T) {
+	var requests atomic.Int32
+	var countExample atomic.Bool
+	countExample.Store(true)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/example":
+			if countExample.Load() {
+				requests.Add(1)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+  "_id": "example",
+  "versions": {"1.5.0": {}, "1.0.0": {}},
+  "time": {"1.5.0": "2025-01-01T00:00:00Z", "1.0.0": "2026-01-01T00:00:00Z"}
+}`))
+		case "/broken":
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	httpClient := registries.NewClient(registryclient.WithHTTPClient(srv.Client()), registryclient.WithMaxRetries(0))
+	c := &RegistriesClient{client: httpClient}
+	repo := "?repository_url=" + url.QueryEscape(srv.URL)
+
+	example := "pkg:npm/example" + repo
+	info, err := c.GetPackage(context.Background(), example)
+	if err != nil {
+		t.Fatalf("GetPackage: %v", err)
+	}
+	countExample.Store(false)
+	bulk, err := c.BulkLookup(context.Background(), []string{example})
+	if err != nil {
+		t.Fatalf("BulkLookup: %v", err)
+	}
+	if info == nil || info.Name != "example" || info.LatestVersion != "1.0.0" || info.Source != "registries" {
+		t.Fatalf("GetPackage() = %+v, want example at latest 1.0.0", info)
+	}
+	if !reflect.DeepEqual(info, bulk[example]) {
+		t.Errorf("GetPackage() = %+v, BulkLookup() = %+v; want the same", info, bulk[example])
+	}
+
+	for name, wantNotFound := range map[string]bool{"missing": true, "broken": false} {
+		info, err := c.GetPackage(context.Background(), "pkg:npm/"+name+repo)
+		if err == nil {
+			t.Errorf("GetPackage(%s) = %+v, nil; want an error", name, info)
+			continue
+		}
+		if got := errors.Is(err, registries.ErrNotFound); got != wantNotFound {
+			t.Errorf("GetPackage(%s) error %v: errors.Is(ErrNotFound) = %v, want %v", name, err, got, wantNotFound)
+		}
+	}
+
+	if got := requests.Load(); got != 2 {
+		t.Errorf("registry requests for example = %d, want 2 (package and versions)", got)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if info, err := c.GetPackage(ctx, example); !errors.Is(err, context.Canceled) {
+		t.Errorf("GetPackage(canceled) = %+v, %v; want context.Canceled", info, err)
 	}
 }
 
