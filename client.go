@@ -54,7 +54,6 @@ type PackageInfo struct {
 	RepositoryParent *RepositoryParent
 }
 
-// Ancestry evidence values for RepositoryParent.Evidence.
 const (
 	// AncestryDeclaredFork is a fork relationship reported by the repository
 	// host in the package's repository metadata.
@@ -63,8 +62,7 @@ const (
 
 // RepositoryParent is the upstream repository declared for a package's source
 // repository, such as the repository a GitHub fork was created from. It
-// identifies a repository only: it does not establish an upstream package,
-// release or commit, so callers should not infer those from it.
+// identifies a repository only, not an upstream package, release or commit.
 type RepositoryParent struct {
 	FullName string // owner/name on the host, e.g. "d3/d3"
 	Evidence string // how the relationship is known, e.g. AncestryDeclaredFork

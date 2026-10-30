@@ -130,7 +130,6 @@ func TestEcosystemsClientBulkLookupRepositoryParent(t *testing.T) {
 		}
 	}
 
-	// Ancestry must not disturb the rest of the package metadata.
 	d3 := result["pkg:npm/%40plotly/d3"]
 	if d3.Name != "@plotly/d3" || d3.LatestVersion != "3.8.2" || d3.License != "BSD-3-Clause" ||
 		d3.Repository != "https://github.com/plotly/d3" || d3.ChangelogFilename != "CHANGES.md" ||
