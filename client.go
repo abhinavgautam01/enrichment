@@ -48,6 +48,32 @@ type PackageInfo struct {
 	// expose them in package metadata)
 	FundingLinks []string
 	Maintainers  []Maintainer
+
+	// Ancestry (ecosyste.ms only). Nil when the package's source repository
+	// has no declared parent.
+	RepositoryParent *RepositoryParent
+}
+
+// Ancestry evidence values for RepositoryParent.Evidence.
+const (
+	// AncestryDeclaredFork is a fork relationship reported by the repository
+	// host in the package's repository metadata.
+	AncestryDeclaredFork = "declared_fork"
+)
+
+// RepositoryParent is the upstream repository declared for a package's source
+// repository, such as the repository a GitHub fork was created from. It
+// identifies a repository only: it does not establish an upstream package,
+// release or commit, so callers should not infer those from it.
+type RepositoryParent struct {
+	FullName string // owner/name on the host, e.g. "d3/d3"
+	Evidence string // how the relationship is known, e.g. AncestryDeclaredFork
+
+	// Host of the package's repository, which a declared fork shares with its
+	// parent. Fields are empty when the metadata omits the host.
+	HostName string // e.g. "GitHub"
+	HostKind string // e.g. "github"
+	HostURL  string // e.g. "https://github.com"
 }
 
 // RepositoryDependents groups dependent packages by one package published from

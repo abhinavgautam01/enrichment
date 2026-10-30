@@ -51,6 +51,15 @@ for _, group := range groups {
 }
 ```
 
+When ecosyste.ms reports that a package's source repository is a fork, `PackageInfo.RepositoryParent` holds the declared upstream repository and the host it lives on. It identifies a repository only, so it carries no upstream package, version or commit. It is nil for other packages and for the registries and deps.dev clients.
+
+```go
+results, _ := eco.BulkLookup(ctx, []string{"pkg:npm/%40plotly/d3"})
+if parent := results["pkg:npm/%40plotly/d3"].RepositoryParent; parent != nil {
+    fmt.Println(parent.FullName, parent.HostKind) // d3/d3 github
+}
+```
+
 ## Vulnerabilities, Licenses, and Versions
 
 ```go
