@@ -75,7 +75,9 @@ func (c *EcosystemsClient) BulkLookup(ctx context.Context, purls []string) (map[
 		info.Description = nullableValue(pkg.Description)
 		info.Homepage = nullableValue(pkg.Homepage)
 		info.Repository = nullableValue(pkg.RepositoryURL)
-		info.ChangelogFilename = extractChangelogFilename(nullableValue(pkg.RepoMetadata))
+		repoMetadata := nullableValue(pkg.RepoMetadata)
+		info.ChangelogFilename = extractChangelogFilename(repoMetadata)
+		info.RepositoryParent = extractRepositoryParent(repoMetadata)
 
 		// Popularity and usage
 		info.Downloads = pkg.Downloads
@@ -116,6 +118,21 @@ func extractChangelogFilename(repoMetadata map[string]interface{}) string {
 		return ""
 	}
 	return filename
+}
+
+// extractRepositoryParent returns the declared parent of a forked repository.
+func extractRepositoryParent(repoMetadata map[string]interface{}) *RepositoryParent {
+	metadata := convertRepositoryMetadata(repoMetadata)
+	if !metadata.Fork || metadata.SourceName == "" {
+		return nil
+	}
+	parent := &RepositoryParent{FullName: metadata.SourceName, Evidence: AncestryDeclaredFork}
+	if host, ok := repoMetadata["host"].(map[string]interface{}); ok {
+		parent.HostName, _ = host["name"].(string)
+		parent.HostKind, _ = host["kind"].(string)
+		parent.HostURL, _ = host["url"].(string)
+	}
+	return parent
 }
 
 func (c *EcosystemsClient) GetVersions(ctx context.Context, purlStr string) ([]VersionInfo, error) {

@@ -791,6 +791,9 @@ func TestDepsDevBulkLookup(t *testing.T) {
 	if info.Source != "depsdev" {
 		t.Errorf("Source = %q, want %q", info.Source, "depsdev")
 	}
+	if info.RepositoryParent != nil {
+		t.Errorf("RepositoryParent = %+v, want nil for a provider without ancestry", info.RepositoryParent)
+	}
 }
 
 func TestDepsDevBulkLookupSkipsInvalidAndUnsupportedPURLs(t *testing.T) {
